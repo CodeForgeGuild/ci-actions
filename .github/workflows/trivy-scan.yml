@@ -1,0 +1,86 @@
+name: Trivy Full Security Scan
+
+on:
+  workflow_call:
+
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  trivy-scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy on source and dependencies
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          format: table
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          output: trivy-fs.txt
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Check if Dockerfile exists
+        id: check_dockerfile
+        run: |
+          if [ -f Dockerfile ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Docker image
+        if: steps.check_dockerfile.outputs.exists == 'true'
+        run: docker build -t trivy-temp-image .
+
+      - name: Run Trivy on Docker image
+        if: steps.check_dockerfile.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'trivy-temp-image'
+          format: table
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          output: trivy-image.txt
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+
+      - name: Combine Trivy reports
+        run: |
+          echo "## 🔒 Trivy Security Scan Report" > trivy-report.md
+          echo "_Last updated: $(date -u)_" >> trivy-report.md
+          echo "" >> trivy-report.md
+
+          echo "### 📁 File System / Dependencies" >> trivy-report.md
+          echo "\`\`\`" >> trivy-report.md
+          cat trivy-fs.txt >> trivy-report.md
+          echo "\`\`\`" >> trivy-report.md
+
+          if [ -f trivy-image.txt ]; then
+            echo "" >> trivy-report.md
+            echo "### 🐳 Docker Image" >> trivy-report.md
+            echo "\`\`\`" >> trivy-report.md
+            cat trivy-image.txt >> trivy-report.md
+            echo "\`\`\`" >> trivy-report.md
+          fi
+
+      - name: Post or update comment in PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: trivy-report.md
+          header: "🔒 Trivy Security Scan"
+
+      - name: Fail on critical/high vulnerabilities
+        run: |
+          if grep -E 'CRITICAL|HIGH' trivy-fs.txt trivy-image.txt 2>/dev/null; then
+            echo "❌ Critical or high vulnerabilities found!"
+            exit 1
+          else
+            echo "✅ No critical or high vulnerabilities detected."
+          fi
