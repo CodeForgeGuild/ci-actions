@@ -12,6 +12,6 @@ permissions:
 jobs:
   release:
     if: github.event.pull_request.merged == true
-    uses: CodeForgeGuild/ci-actions/.github/workflows/release.yml@v0
+    uses: CodeForgeGuild/ci-actions/.github/workflows/release.yml@main
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
