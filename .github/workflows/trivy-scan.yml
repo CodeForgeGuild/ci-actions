@@ -71,7 +71,7 @@ jobs:
           fi
 
       - name: Post or update comment in PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           path: trivy-report.md
           header: "🔒 Trivy Security Scan"
