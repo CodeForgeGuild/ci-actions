@@ -1,0 +1,65 @@
+name: Terraform Apply
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory where Terraform files are located'
+        required: false
+        type: string
+        default: '.'
+      terraform_version:
+        description: 'Terraform version to use'
+        required: false
+        type: string
+        default: 'latest'
+      environment:
+        description: 'Deployment environment (used for var-file selection)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      WIF_PROVIDER:
+        required: true
+      GCP_SERVICE_ACCOUNT:
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Auth GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -no-color
+
+      - name: Resolve var-file flag
+        id: varfile
+        run: |
+          ENV="${{ inputs.environment }}"
+          FLAG=""
+          if [ -n "$ENV" ] && [ -f "${{ inputs.working_directory }}/${ENV}.tfvars" ]; then
+            FLAG="-var-file=${ENV}.tfvars"
+          fi
+          echo "flag=$FLAG" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Apply
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform apply -auto-approve -no-color ${{ steps.varfile.outputs.flag }}

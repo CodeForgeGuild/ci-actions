@@ -2,6 +2,12 @@ name: Release
 
 on:
   workflow_call:
+    inputs:
+      artifact_name:
+        description: 'Name of a GitHub Actions artifact to download and attach to the release'
+        required: false
+        type: string
+        default: ''
     secrets:
       GH_TOKEN:
         required: true
@@ -89,6 +95,27 @@ jobs:
           git push origin -f "v$MAJOR"
           git push origin -f "v$MAJOR.$MINOR"
 
+      - name: Generate changelog
+        id: changelog
+        run: |
+          OLD_TAG=${{ steps.get_tag.outputs.tag }}
+          if [ "$OLD_TAG" = "v0.0.0" ]; then
+            LOG=$(git log --pretty=format:"- %s" | head -30)
+          else
+            LOG=$(git log "${OLD_TAG}..HEAD" --pretty=format:"- %s")
+          fi
+          {
+            echo 'changelog<<CHANGELOG_EOF'
+            echo "$LOG"
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download artifact
+        if: inputs.artifact_name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: release-artifacts/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -96,5 +123,6 @@ jobs:
           tag_name: ${{ steps.bump.outputs.new_tag }}
           name: "Release ${{ steps.bump.outputs.new_tag }}"
           body: ${{ steps.changelog.outputs.changelog }}
+          files: ${{ inputs.artifact_name != '' && 'release-artifacts/**' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
